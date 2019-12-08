@@ -13,25 +13,26 @@ U = parse(Float64, input(prompt))
 Lx,Ly = L,L
 mu = parse(Float64, input(prompt))
 =#
-
+#=
 Lx, Ly = 2*pi , 2*pi
 nx, ny = 100,100
-L = 1
-rho = 1
-mu = 1e-4
-U = 1
+L = Lx
+rho = 1.0
+mu = 2*pi*1e-3
+U = 1.0
 nu = mu/rho
 Re = rho*U*L/mu
-#=
+=#
+#
 Lx, Ly = 1 , 1
 nx, ny = 129,129
 L = 1
 rho = 1
 U = 1
-mu = 1e-2
+mu = 0.25*1e-2
 nu = mu/rho
 Re = U*L/nu
-=#
+#
 grid = zeros(Float64,nx*ny,2)
 for j = 1 : ny
  for i = 1 : nx
@@ -73,15 +74,15 @@ end
 # calculate the S/dist
 for i = 1 : nx-1
   for j = 1 : ny-1
-    sd_i[j,i] = 1/dist_i[j,i]*meshcell[j,i].length41
-    sd_j[j,i] = 1/dist_j[j,i]*meshcell[j,i].length12
+    sd_i[j,i] = 1.0/dist_i[j,i]*meshcell[j,i].length41
+    sd_j[j,i] = 1.0/dist_j[j,i]*meshcell[j,i].length12
   end
 end
 for j = 1:ny-1
-   sd_i[j,nx] = 1/dist_i[j,nx]*meshcell[j,nx-1].length23
+   sd_i[j,nx] = 1.0/dist_i[j,nx]*meshcell[j,nx-1].length23
 end
 for i = 1:nx-1
-   sd_j[ny,i] = 1/dist_j[ny,i]*meshcell[ny-1,i].length34
+   sd_j[ny,i] = 1.0/dist_j[ny,i]*meshcell[ny-1,i].length34
 end
 
 # ========== Initial Condition Setting ====================
@@ -90,13 +91,13 @@ function init(ny::Int64,nx::Int64)
 
  global  u = zeros(Float64,ny+1,nx+1)
  global  v = zeros(Float64,ny+1,nx+1)
- global  p = zeros(Float64,ny+1,nx+1)
- global  p0 = zeros(Float64,ny+1,nx+1) # store the previous iter result
+ global  p = ones(Float64,ny+1,nx+1)
+ global  p0 = ones(Float64,ny+1,nx+1) # store the previous iter result
  # store the u_s = u_star, v_s = v_star
  global  u_s = zeros(Float64,ny+1,nx+1)
  global  v_s = zeros(Float64,ny+1,nx+1)
+ #=
  # tyler green init
-
  for j = 1:ny-1
   for i = 1:nx-1
   u[j+1,i+1] = -(cos(meshcell[j,i].cellcenter[1])*
@@ -107,11 +108,11 @@ function init(ny::Int64,nx::Int64)
                        +cos(2*meshcell[j,i].cellcenter[2]))
    end
   end
-
+  =#
 end
 # =========== Boundary Condition Setting ==================
 function bcs(ny::Int64,nx::Int64)
-
+ #=
  # ======= Tyler Green problem==========
  # Periodic Boundary condition
   for j = 2: ny
@@ -120,12 +121,14 @@ function bcs(ny::Int64,nx::Int64)
    global v[j,1] = v[j,nx]
    global v_s[j,1] = v_s[j,nx]
    global p[j,1] = p[j,nx]
+   global p0[j,1] = p0[j,nx]
 
    global u[j,nx+1] = u[j,2]
    global u_s[j,nx+1] = u_s[j,2]
    global v[j,nx+1] = v[j,2]
    global v_s[j,nx+1] = v_s[j,2]
    global p[j,nx+1] = p[j,2]
+   global p0[j,nx+1] = p0[j,2]
   end
 
   for i = 2: nx
@@ -134,47 +137,49 @@ function bcs(ny::Int64,nx::Int64)
    global v[1,i] = v[ny,i]
    global v_s[1,i] = v_s[ny,i]
    global p[1,i] = p[ny,i]
+   global p0[1,i] = p0[ny,i]
 
    global u[ny+1,i] = u[2,i]
    global u_s[ny+1,i] = u_s[2,i]
    global v[ny+1,i] = v[2,i]
    global v_s[ny+1,i] = v_s[2,i]
    global p[ny+1,i] = p[2,i]
+   global p0[ny+1,i] = p0[2,i]
   end
-
- #=
+ =#
+ #
  # ======  cavity problem ==============
  #  Dirichlet boundary Condition bc = 0
  #  left & right
    for j = 2:ny
-      global u[j,1] = 0.0
-      global u_s[j,1] = 0.0
+      global u[j,1] = -1*u[j,2]
+      global u_s[j,1] = -1*u_s[j,2]
 
-      global u[j,nx+1] = 0.0
-      global u_s[j,nx+1] = 0.0
+      global u[j,nx+1] = -1*u[j,nx]
+      global u_s[j,nx+1] = -1*u_s[j,nx]
 
-      global v[j,1] = 0.0
-      global v_s[j,1] = 0.0
+      global v[j,1] = -1*v[j,2]
+      global v_s[j,1] = -1*v_s[j,2]
 
-      global v[j,nx+1] = 0.0
-      global v_s[j,nx+1] = 0.0
+      global v[j,nx+1] =-1*v[j,nx]
+      global v_s[j,nx+1] = -1*v_s[j,nx]
    end
    # bottom & top
    for i = 2:nx
-      global u[1,i] = 0.0
-      global u_s[1,i] = 0.0
+      global u[1,i] = -1*u[2,i]
+      global u_s[1,i] =  -1*u_s[2,i]
 
       global u[ny+1,i] = U*2.0 - u[ny,i]
       global u_s[ny+1,i] = U*2.0 - u_s[ny,i]
 
-      global v[1,i] = 0.0
-      global v_s[1,i] = 0.0
+      global v[1,i] = -1*v[2,i]
+      global v_s[1,i] = -1*v_s[2,i]
 
-      global v[ny+1,i] = 0.0
-      global v_s[ny+1,i] = 0.0
+      global v[ny+1,i] = -1*v[ny,i]
+      global v_s[ny+1,i] = -1*v_s[ny,i]
    end
 
- # Neumann BC =of pressure
+ # Neumann BC of pressure
  for j = 2:ny
     global p[j,1] = p[j,2]
     global p[j,nx+1] = p[j,nx]
@@ -183,13 +188,13 @@ function bcs(ny::Int64,nx::Int64)
     global p[1,i] = p[2,i]
     global p[ny+1,i] = p[ny,i]
   end
-  =#
+  #
+
 end
 function pressure_correction()
     global nx2 = zeros(Float64,ny-1,nx-1)
     global ny2 = zeros(Float64,ny-1,nx-1)
     global nxy = zeros(Float64,ny-1,nx-1)
-
 
     for j = 1 : ny-1
       for i = 1 : nx-1
@@ -216,10 +221,13 @@ bcs(ny,nx)
 pressure_correction()
 # spatial(u,v,p,ny,nx)
 # ====== Maain Loop ====================
-t_min = 0.0
-t_max = 2
-t_step = 0.002
+t_min = 20.0
+t_max = 25.0
+t_step = 0.0005
+#t_step = 0.0005 tyler green
 t_end = convert(Int64, (t_max-t_min)/t_step)
+t = zeros(t_end)
+K = zeros(t_end)
 iter = 0
 
 Nu_1 = 0.0
@@ -227,13 +235,15 @@ Nv_1 = 0.0
 Vu_1 = 0.0
 Vv_1 = 0.0
 
-K = zeros(t_end)
+vn_ss = zeros(ny-1,nx-1)
 
 for it = 1 : t_end
-  #spatial(u,v,p,ny,nx)
- print("time = $(it*t_step)",'\n')
- for j = 1:ny-1
-    for i = 1:nx-1
+
+  t[it] = t_step*it
+  print("time = $(t_min+(it*t_step))",'\n')
+
+  for j = 1 : ny-1
+    for i = 1 : nx-1
      # surface u v derivative
      u12 = (u[j+1,i+1]+u[j,i+1])/2
      u23 = (u[j+1,i+1]+u[j+1,i+2])/2
@@ -245,6 +255,12 @@ for it = 1 : t_end
      v34 = (v[j+1,i+1]+v[j+2,i+1])/2
      v41 = (v[j+1,i+1]+v[j+1,i])/2
     # ==============================
+     #=
+     vn12 = u12*meshcell[j,i].out_norm12[1] + v12*meshcell[j,i].out_norm12[2]
+     vn23 = u23*meshcell[j,i].out_norm23[1] + v23*meshcell[j,i].out_norm23[2]
+     vn34 = u34*meshcell[j,i].out_norm34[1] + v34*meshcell[j,i].out_norm34[2]
+     vn41 = u41*meshcell[j,i].out_norm41[1] + v41*meshcell[j,i].out_norm41[2]
+     =#
      vn12 = dot([u12;v12],meshcell[j,i].out_norm12)
      vn23 = dot([u23;v23],meshcell[j,i].out_norm23)
      vn34 = dot([u34;v34],meshcell[j,i].out_norm34)
@@ -279,31 +295,29 @@ for it = 1 : t_end
 
     # AB2
     #u_s = u_star
-
+    #=
     if it == 1
       global Nu_1 = Nu
       global Nv_1 = Nv
       global Vu_1 = Vu
       global Vv_1 = Vv
     end
-
+    =#
     u_s[j+1,i+1] = u[j+1,i+1] + t_step*(1.5*(Nu+Vu)-0.5*(Nu_1+Vu_1))
     v_s[j+1,i+1] = v[j+1,i+1] + t_step*(1.5*(Nv+Vv)-0.5*(Nv_1+Vv_1))
 
-    global Nu_1 = Nu
-    global Nv_1 = Nv
-    global Vu_1 = Vu
-    global Vv_1 = Vv
+    Nu_1 = Nu
+    Nv_1 = Nv
+    Vu_1 = Vu
+    Vv_1 = Vv
 
   end
  end
  bcs(nx,ny)
 
-
  # end of calculate the u*.v* value at cellcenter
 
  # Pressure calculation parts
- vn_ss = zeros(ny-1,nx-1)
 
   for j = 1:ny-1
     for i = 1:nx-1
@@ -318,6 +332,7 @@ for it = 1 : t_end
     v_s23 = (v_s[j+1,i+1]+v_s[j+1,i+2])/2
     v_s34 = (v_s[j+1,i+1]+v_s[j+2,i+1])/2
     v_s41 = (v_s[j+1,i+1]+v_s[j+1,i])/2
+
     #  vn = unx + vny ======================
     vn_s12 = dot([u_s12;v_s12],meshcell[j,i].out_norm12)
     vn_s23 = dot([u_s23;v_s23],meshcell[j,i].out_norm23)
@@ -340,9 +355,10 @@ for it = 1 : t_end
      p0[j+1,i+1] = p[j+1,i+1]
      p[j+1,i+1] = -1*((vn_ss[j,i]-p[j+1,i+2]*sd_i[j,i+1]-p[j+2,i+1]*sd_j[j+1,i]
                        -p[j+1,i]*sd_i[j,i]-p[j,i+1]*sd_j[j,i])/
-                        (sd_i[j,i]+sd_i[j,i+1]+sd_j[j,i]+sd_j[j+1,i]))
+                       (sd_i[j,i]+sd_i[j,i+1]+sd_j[j,i]+sd_j[j+1,i]))
      # SOR
-      w = 1.5
+      #w = 1.7 for tyler green
+      w = 1.985
       p[j+1,i+1] = p0[j+1,i+1] + w*(p[j+1,i+1]-p0[j+1,i+1])
 
       res = res +  (p[j+1,i+1]-p0[j+1,i+1])^2
@@ -362,24 +378,24 @@ for it = 1 : t_end
     for j = 1:ny-1
       for i = 1 : nx-1
 
-      pnx12 = ((p[j,i+1]-p[j+1,i+1])/dist_j[j,i]*meshcell[j,i].out_norm12[1]
-               *meshcell[j,i].length12^2)
-      pnx23 = ((p[j+1,i+2]-p[j+1,i+1])/dist_i[j,i+1]*meshcell[j,i].out_norm23[1]
-                *meshcell[j,i].length23^2)
-      pnx34 = ((p[j+2,i+1]-p[j+1,i+1])/dist_j[j+1,i]*meshcell[j,i].out_norm34[1]
-                *meshcell[j,i].length34^2)
-      pnx41 = ((p[j+1,i]-p[j+1,i+1])/dist_i[j,i]*meshcell[j,i].out_norm41[1]
-                *meshcell[j,i].length34^2)
+      pnx12 = ((p[j,i+1]-p[j+1,i+1])*sd_j[j,i]*meshcell[j,i].out_norm12[1]
+               *meshcell[j,i].length12)
+      pnx23 = ((p[j+1,i+2]-p[j+1,i+1])*sd_i[j,i+1]*meshcell[j,i].out_norm23[1]
+                *meshcell[j,i].length23)
+      pnx34 = ((p[j+2,i+1]-p[j+1,i+1])*sd_j[j+1,i]*meshcell[j,i].out_norm34[1]
+                *meshcell[j,i].length34)
+      pnx41 = ((p[j+1,i]-p[j+1,i+1])*sd_i[j,i]*meshcell[j,i].out_norm41[1]
+                *meshcell[j,i].length34)
       pnx = pnx12 + pnx23 + pnx34 + pnx41
 
-      pny12 = ((p[j,i+1]-p[j+1,i+1])/dist_j[j,i]*meshcell[j,i].out_norm12[2]
-               *meshcell[j,i].length12^2)
-      pny23 = ((p[j+1,i+2]-p[j+1,i+1])/dist_i[j,i+1]*meshcell[j,i].out_norm23[2]
-                *meshcell[j,i].length23^2)
-      pny34 = ((p[j+2,i+1]-p[j+1,i+1])/dist_j[j+1,i]*meshcell[j,i].out_norm34[2]
-                *meshcell[j,i].length34^2)
-      pny41 = ((p[j+1,i]-p[j+1,i+1])/dist_i[j,i]*meshcell[j,i].out_norm41[2]
-                *meshcell[j,i].length41^2)
+      pny12 = ((p[j,i+1]-p[j+1,i+1])*sd_j[j,i]*meshcell[j,i].out_norm12[2]
+               *meshcell[j,i].length12)
+      pny23 = ((p[j+1,i+2]-p[j+1,i+1])*sd_i[j,i+1]*meshcell[j,i].out_norm23[2]
+                *meshcell[j,i].length23)
+      pny34 = ((p[j+2,i+1]-p[j+1,i+1])*sd_j[j+1,i]*meshcell[j,i].out_norm34[2]
+                *meshcell[j,i].length34)
+      pny41 = ((p[j+1,i]-p[j+1,i+1])*sd_i[j,i]*meshcell[j,i].out_norm41[2]
+                *meshcell[j,i].length41)
       pny = pny12 + pny23 + pny34 + pny41
 
       (px,py) = [nx2[j,i] nxy[j,i];nxy[j,i] ny2[j,i]]\[pnx;pny]
@@ -388,7 +404,7 @@ for it = 1 : t_end
       global u[j+1,i+1] = u_s[j+1,i+1]-t_step/rho*px
       global v[j+1,i+1] = v_s[j+1,i+1]-t_step/rho*py
 
-      K[it] = K[it] + (u[j+1,i+1]^2 + v[j+1,i+1]^2)/2*meshcell[j,i].area
+      #K[it] = K[it] + (u[j+1,i+1]^2 + v[j+1,i+1]^2)/2*meshcell[j,i].area
       end
     end
     bcs(ny,nx)
@@ -396,7 +412,7 @@ for it = 1 : t_end
 
 end
 
-K = K/(4*pi^2)
+#K = K/(4*pi^2)
 
 
 # plot and figure
@@ -411,8 +427,9 @@ for j = 1:ny-1
   y_coord[j,i] = meshcell[j,i].cellcenter[2]
   end
 end
+#=
 # 2-d Tyler Green Porblem
-t_max = 0.0
+#t_max = 0.0001
 v_tyler = zeros((ny-1),(nx-1))
 u_tyler = zeros((ny-1),(nx-1))
 p_tyler = zeros((ny-1),(nx-1))
@@ -423,19 +440,42 @@ for j = 1:ny-1
    p_tyler[j,i] = 1.0 - 1/4*(cos(2*x_coord[j,i])+cos(2*y_coord[j,i]))*exp(-4*nu*t_max)
   end
 end
+
 K_T = zeros(t_end)
 for i = 1:t_end
- K_T[i] = 1/4*exp(-4*nu-i*t_step)
+ K_T[i] = 1/4*exp(-4*nu*i*t_step)
 end
+=#
 
 using Plots
 pyplot()
-#gr()
-#PyPlot.contour(x_coord,y_coord,u_tyler)
-contour(x_coord,y_coord,u[2:ny,2:nx])
-contour(x_coord,y_coord,u_tyler)
 
-plot(1:t_end,K,label ="CFD")
-plot!(1:t_end,K_T,label = "Theoretical")
-#PyPlot.arrow(x_coord,y_coord,u[2:ny,2:nx],v[2:ny,2:nx])
-#PyPlot.arrow(2,3,0.2,0.2)
+contour(x_coord,y_coord,u[2:ny,2:nx])
+#contour(x_coord,y_coord,u_tyler)
+contour(x_coord,y_coord,v[2:ny,2:nx])
+#contour(x_coord,y_coord,v_tyler)
+contour(x_coord,y_coord,p[2:ny,2:nx])
+#contour(x_coord,y_coord,p_tyler)
+
+#=
+for it = 1 : t_end
+  t[it] = t_step*it
+end
+plot(t,K,label ="CFD",
+     title = "Re = $Re KE decay",
+     xlabel = "t", ylabel = "KE")
+plot!(t,K_T,label = "Theoretical")
+
+#png("re1000")
+=#
+#
+# Data restart process
+using DelimitedFiles
+writedlm("p data of $t_max re400",p)
+writedlm("u data of $t_max re400",u)
+writedlm("v data of $t_max re400",v)
+
+
+u = readdlm("u data of 10.0 re400")
+v = readdlm("v data of 10.0 re400")
+p = readdlm("p data of 10.0 re400")
