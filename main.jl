@@ -17,6 +17,7 @@ function tylergreen(x::Real)
   global mu = rho*U*L/Re
   global nu = mu/rho
   global problem_type = 1
+  global w = 1.7
 end
 
 function cavity(x::Real)
@@ -29,19 +30,9 @@ function cavity(x::Real)
   global mu = rho*U*L/Re
   global nu = mu/rho
   global problem_type = 2
+  global w = 1.985
 end
-#=
-function grid_generator(nx::Int64,ny::Int64)
-   global grid = zeros(Float64,nx*ny,2)
-   for j = 1 : ny
-    for i = 1 : nx
-     k = (j-1)*nx+i
-     grid[k,1] = Lx/(nx-1)*(i-1)
-     grid[k,2] = Ly/(ny-1)*(j-1)
-     end
-   end
-end
-=#
+
 function grid_generator!(nx::Int64,ny::Int64)
    global grid = zeros(Float64,nx*ny,2)
    for i = 1 : nx
@@ -57,20 +48,13 @@ function grid_generator!(nx::Int64,ny::Int64)
     end
    end
 end
-
-# ====== performance testing using grid generate
-# for row-column vs column-row (column first better)
-#=
-tylergreen(100.0)
-@time grid_generator(nx,ny)
-@time grid_generator!(nx,ny)
-=#
-# ====== end of performance testing
+# ==  extract the needed variables based from geometry ====
 function geo_factor(nx::Int64,ny::Int64)
   global dist_i = ones(Float64,ny-1,nx) # the x dir distance between cellcenter
   global dist_j = ones(Float64,ny,nx-1) # the y dir distance between cellcenter
   global sd_i = zeros(Float64,ny-1,nx) # surface length23 or 41/dist_i
   global sd_j = zeros(Float64,ny,nx-1) # surface length12 pr 34/dist_j
+  global sum_sd = zeros(Float64,ny-1,nx-1) # sum of sd_i sd_j for each real cell
 
   for i = 2 : nx-1
   for j = 1 : ny-1
@@ -107,6 +91,11 @@ function geo_factor(nx::Int64,ny::Int64)
   for i = 1:nx-1
      sd_j[ny,i] = 1.0/dist_j[ny,i]*meshcell[ny-1,i].length34
   end
+  for i = 1 : nx-1
+  for j = 1 : ny-1
+      sum_sd[j,i] =sd_i[j,i]+sd_i[j,i+1]+sd_j[j,i]+sd_j[j+1,i]
+  end
+  end
 end
 
 # ========== Initial Condition Setting ====================
@@ -127,8 +116,10 @@ function init(nx::Int64,ny::Int64,problem_type::Int64)
    for j = 1:ny-1
     u[j+1,i+1] = -(cos(meshcell[j,i].cellcenter[1])*
                    sin(meshcell[j,i].cellcenter[2]))
+    u_s[j+1,i+1] = u[j+1,i+1]
     v[j+1,i+1] =  (sin(meshcell[j,i].cellcenter[1])*
                    cos(meshcell[j,i].cellcenter[2]))
+    v_s[j+1,i+1] = v[j+1,i+1]
     p[j+1,i+1] = 1.0 - 1/4*(cos(2*meshcell[j,i].cellcenter[1])
                           +cos(2*meshcell[j,i].cellcenter[2]))
     end
@@ -178,7 +169,7 @@ function bcs(nx::Int64,ny::Int64,problem_type::Int64,)
  #  Dirichlet boundary Condition bc = 0
  #  left & right
    for j = 2:ny
-        u[j,1] = -1*u[j,2]
+       u[j,1] = -1*u[j,2]
        u_s[j,1] = -1*u_s[j,2]
 
        u[j,nx+1] = -1*u[j,nx]
@@ -216,6 +207,7 @@ function bcs(nx::Int64,ny::Int64,problem_type::Int64,)
  end #end if
 end
 
+# =========== pressure coorrection varaible ===============
 function pressure_correction()
     global nx2 = zeros(Float64,ny-1,nx-1)
     global ny2 = zeros(Float64,ny-1,nx-1)
@@ -242,8 +234,8 @@ function pressure_correction()
 end
 
 # ====== precondition =================
-#tylergreen(100)
-cavity(100)
+tylergreen(100)
+#cavity(100)
 grid_generator!(nx,ny)
 meshcell = cellproperty(grid,nx,ny)
 geo_factor(nx,ny)
@@ -251,21 +243,25 @@ geo_factor(nx,ny)
 init(nx,ny,problem_type)
 bcs(nx,ny,problem_type)
 pressure_correction()
-# ====== Maain Loop ====================
+
+# ====== Maain Loop  setting ====================
 global t_min = 0.0
-global t_max = 5.0
-global t_step = 0.0005
+global t_max = 1.0
+global t_step = 0.01
 #t_step = 0.001 tyler green
 global t_end = convert(Int64, (t_max-t_min)/t_step)
 global t = zeros(t_end)
 global K = zeros(t_end)
 
-function v_prediction(Nu_1::Array{Float64,2},Nv_1::Array{Float64,2},
-  Vu_1::Array{Float64,2},Vv_1::Array{Float64,2})
+# ======== main code calculation stage function definition ==============
+function v_prediction(Nu::Array{Float64,2},Nu_1::Array{Float64,2},
+                      Nv::Array{Float64,2},Nv_1::Array{Float64,2},
+                      Vu::Array{Float64,2},Vu_1::Array{Float64,2},
+                      Vv::Array{Float64,2},Vv_1::Array{Float64,2})
 
    for i = 1 : nx-1
    for j = 1 : ny-1
-     # ================ surface u v derivative
+     # ==== surface u v derivative ===================
      u12 = (u[j+1,i+1]+u[j,i+1])/2
      u23 = (u[j+1,i+1]+u[j+1,i+2])/2
      u34 = (u[j+1,i+1]+u[j+2,i+1])/2
@@ -275,7 +271,7 @@ function v_prediction(Nu_1::Array{Float64,2},Nv_1::Array{Float64,2},
      v23 = (v[j+1,i+1]+v[j+1,i+2])/2
      v34 = (v[j+1,i+1]+v[j+2,i+1])/2
      v41 = (v[j+1,i+1]+v[j+1,i])/2
-     # =============== surface normal velocity u*nx+v*ny
+     # ===== surface normal velocity u*nx+v*ny =======
      vn12 = u12*meshcell[j,i].out_norm12[1] + v12*meshcell[j,i].out_norm12[2]
      vn23 = u23*meshcell[j,i].out_norm23[1] + v23*meshcell[j,i].out_norm23[2]
      vn34 = u34*meshcell[j,i].out_norm34[1] + v34*meshcell[j,i].out_norm34[2]
@@ -286,10 +282,10 @@ function v_prediction(Nu_1::Array{Float64,2},Nv_1::Array{Float64,2},
      v_vn_s = (v12*vn12*meshcell[j,i].length12+v23*vn23*meshcell[j,i].length23
               +v34*vn34*meshcell[j,i].length34+v41*vn41*meshcell[j,i].length41)
 
-     Nu = -1.0/meshcell[j,i].area*u_vn_s
-     Nv = -1.0/meshcell[j,i].area*v_vn_s
+     Nu[j,i] = -1.0/meshcell[j,i].area*u_vn_s
+     Nv[j,i] = -1.0/meshcell[j,i].area*v_vn_s
 
-     #  =========================surface derivative flux
+     #  ====== surface derivative flux ======================
      u_n12_s = (u[j,i+1]-u[j+1,i+1])*sd_j[j,i]
      u_n23_s = (u[j+1,i+2]-u[j+1,i+1])*sd_i[j,i+1]
      u_n34_s = (u[j+2,i+1]-u[j+1,i+1])*sd_j[j+1,i]
@@ -300,18 +296,78 @@ function v_prediction(Nu_1::Array{Float64,2},Nv_1::Array{Float64,2},
      v_n34_s = (v[j+2,i+1]-v[j+1,i+1])*sd_j[j+1,i]
      v_n41_s = (v[j+1,i]-v[j+1,i+1])*sd_i[j,i]
 
-     Vu = 1.0/meshcell[j,i].area*nu*(u_n12_s+u_n23_s+u_n34_s+u_n41_s)
-     Vv = 1.0/meshcell[j,i].area*nu*(v_n12_s+v_n23_s+v_n34_s+v_n41_s)
-     # u_s = u_star
-     u_s[j+1,i+1] = u[j+1,i+1] + t_step*(1.5*(Nu+Vu)-0.5*(Nu_1[j,i]+Vu_1[j,i]))
-     v_s[j+1,i+1] = v[j+1,i+1] + t_step*(1.5*(Nv+Vv)-0.5*(Nv_1[j,i]+Vv_1[j,i]))
+     Vu[j,i] = 1.0/meshcell[j,i].area*nu*(u_n12_s+u_n23_s+u_n34_s+u_n41_s)
+     Vv[j,i] = 1.0/meshcell[j,i].area*nu*(v_n12_s+v_n23_s+v_n34_s+v_n41_s)
+   end
+   end
+   #=
+   #  ======== u_s = u_star AB2 method for nonlinear and vicous ============
+   for i = 1:nx-1
+   for j = 1:ny-1
+     u_s[j+1,i+1] = u[j+1,i+1] + t_step*(1.5*(Nu[j,i]+Vu[j,i])-0.5*(Nu_1[j,i]+Vu_1[j,i]))
+     v_s[j+1,i+1] = v[j+1,i+1] + t_step*(1.5*(Nv[j,i]+Vv[j,i])-0.5*(Nv_1[j,i]+Vv_1[j,i]))
 
-     Nu_1[j,i] = Nu
-     Nv_1[j,i] = Nv
-     Vu_1[j,i] = Vu
-     Vv_1[j,i] = Vv
+     Nu_1[j,i] = Nu[j,i]
+     Nv_1[j,i] = Nv[j,i]
+     Vu_1[j,i] = Vu[j,i]
+     Vv_1[j,i] = Vv[j,i]
+   end
+   end
+    =#
+    #
+    #  ======== using Crank -Nicolson Method for viscous term ===============
+    # G_S to solve iteration first and then SOR
+
+     u_s0 = zeros(Float64,ny,nx) # used to store previous calculation
+     v_s0 = zeros(Float64,ny,nx)
+
+     # SOR setting gain
+     w = 1.7
+     for iter = 1:10000
+        resu = 0.0
+        resv = 0.0
+      for i = 1:nx-1
+      for j = 1:ny-1
+       u_s0[j+1,i+1] = u_s[j+1,i+1]
+       v_s0[j+1,i+1] = v_s[j+1,i+1]
+
+       RHSu = u[j+1,i+1] + t_step*(1.5*Nu[j,i]-0.5*Nu_1[j,i]+0.5*Vu[j,i])
+       RHSv = v[j+1,i+1] + t_step*(1.5*Nv[j,i]-0.5*Nv_1[j,i]+0.5*Vv[j,i])
+
+        u_s[j+1,i+1] = ((RHSu + 0.5*t_step*nu/meshcell[j,i].area*
+                    (sd_i[j,i+1]*u_s[j+1,i+2] + sd_i[j,i]*u_s[j+1,i]
+                    +sd_j[j+1,i]*u_s[j+2,i+1] + sd_j[j,i]*u_s[j,i+1]))/
+                    (1 + 0.5*t_step*nu/meshcell[j,i].area*sum_sd[j,i]))
+        v_s[j+1,i+1] = ((RHSv + 0.5*t_step*nu/meshcell[j,i].area*
+                    (sd_i[j,i+1]*v_s[j+1,i+2] + sd_i[j,i]*v_s[j+1,i]
+                    +sd_j[j+1,i]*v_s[j+2,i+1] + sd_j[j,i]*v_s[j,i+1]))/
+                    (1 + 0.5*t_step*nu/meshcell[j,i].area*sum_sd[j,i]))
+
+       #  ======= SOR iteration =============
+         u_s[j+1,i+1] = u_s0[j+1,i+1] + w*(u_s[j+1,i+1]-u_s0[j+1,i+1])
+         v_s[j+1,i+1] = v_s0[j+1,i+1] + w*(v_s[j+1,i+1]-v_s0[j+1,i+1])
+
+         resu = resu + (u_s[j+1,i+1]-u_s0[j+1,i+1])^2
+         resv = resv + (v_s[j+1,i+1]-v_s0[j+1,i+1])^2
+        end
+        end
+
+       if resu^0.5 <=1e-4 && resv^0.5<=1e-4
+         print("resu = $(resu^0.5)",'\n')
+         print("resv = $(resv^0.5)",'\n')
+         print("iter = $iter",'\n')
+         print("velocity prediction iter finished",'\n')
+       break
+      end
     end
-    end
+
+     for i = 1:nx-1
+     for j = 1:ny-1
+        Nu_1[j,i] = Nu[j,i]
+        Nv_1[j,i] = Nv[j,i]
+      end
+      end
+     #
 end
 function p_calculation()
 
@@ -342,6 +398,8 @@ function p_calculation()
                              +vn_s41*meshcell[j,i].length41)
     end
     end
+
+    #print(vn_ss[3,3])
   # surface pressure derivative flux
    for iter = 1:10000
     res = 0.0
@@ -353,8 +411,8 @@ function p_calculation()
                        -p[j+1,i]*sd_i[j,i]-p[j,i+1]*sd_j[j,i])/
                        (sd_i[j,i]+sd_i[j,i+1]+sd_j[j,i]+sd_j[j+1,i]))
      # SOR
-      #w = 1.7 #for tyler green
-      w = 1.985
+      w = 1.7 #for tyler green
+      #w = 1.985
       p[j+1,i+1] = p0[j+1,i+1] + w*(p[j+1,i+1]-p0[j+1,i+1])
 
       res = res +  (p[j+1,i+1]-p0[j+1,i+1])^2
@@ -363,9 +421,9 @@ function p_calculation()
     bcs(nx,ny,problem_type)
 
      if res^0.5 <= 0.0001
-       print("res = $(res^0.5)",'\n')
+       print("resp = $(res^0.5)",'\n')
        print("iter = $iter",'\n')
-       print("iter finished",'\n')
+       print("pressure iter finished",'\n')
        break
      end
    end
@@ -395,151 +453,115 @@ function p_correction(it::Int64)
     pny = pny12 + pny23 + pny34 + pny41
 
     (px,py) = [nx2[j,i] nxy[j,i];nxy[j,i] ny2[j,i]]\[pnx;pny]
-    #print("px = $px")
-    #print("py = $py")
-      u[j+1,i+1] = u_s[j+1,i+1]-t_step/rho*px
-      v[j+1,i+1] = v_s[j+1,i+1]-t_step/rho*py
 
-      K[it] = K[it] + (u[j+1,i+1]^2 + v[j+1,i+1]^2)/2*meshcell[j,i].area
+    u[j+1,i+1] = u_s[j+1,i+1]-t_step/rho*px
+    v[j+1,i+1] = v_s[j+1,i+1]-t_step/rho*py
+
+    K[it] = K[it] + 1/(4*pi^2)*(u[j+1,i+1]^2+v[j+1,i+1]^2)/2*meshcell[j,i].area
     end
     end
 end
-# ===================test section ================
-# test of linear algebra/ direct calculation efficientcy
-#=
-function pp(u::Array{Float64,2},v::Array{Float64,2})
- for j = 2, i = 2
-  u12= (u[j+1,i+1]+u[j,i+1])/2
-  u23= (u[j+1,i+1]+u[j+1,i+2])/2
-  u34= (u[j+1,i+1]+u[j+2,i+1])/2
-  u41= (u[j+1,i+1]+u[j+1,i])/2
-
-  v12 = (v[j+1,i+1]+v[j,i+1])/2
-  v23 = (v[j+1,i+1]+v[j+1,i+2])/2
-  v34 = (v[j+1,i+1]+v[j+2,i+1])/2
-  v41 = (v[j+1,i+1]+v[j+1,i])/2
-
-  vn12 = u12*meshcell[j,i].out_norm12[1] + v12*meshcell[j,i].out_norm12[2]
-  vn23 = u23*meshcell[j,i].out_norm23[1] + v23*meshcell[j,i].out_norm23[2]
-  vn34 = u34*meshcell[j,i].out_norm34[1] + v34*meshcell[j,i].out_norm34[2]
-  vn41 = u41*meshcell[j,i].out_norm41[1] + v41*meshcell[j,i].out_norm41[2]
- end
-end
-function ppp(u::Array{Float64,2},v::Array{Float64,2})
- for j = 2, i = 2
-  u12 = (u[j+1,i+1]+u[j,i+1])/2
-  u23 = (u[j+1,i+1]+u[j+1,i+2])/2
-  u34 = (u[j+1,i+1]+u[j+2,i+1])/2
-  u41 = (u[j+1,i+1]+u[j+1,i])/2
-
-  v12 = (v[j+1,i+1]+v[j,i+1])/2
-  v23 = (v[j+1,i+1]+v[j+1,i+2])/2
-  v34 = (v[j+1,i+1]+v[j+2,i+1])/2
-  v41 = (v[j+1,i+1]+v[j+1,i])/2
-
- vn12 = dot([u12;v12],meshcell[j,i].out_norm12)
- vn23 = dot([u23;v23],meshcell[j,i].out_norm23)
- vn34 = dot([u34;v34],meshcell[j,i].out_norm34)
- vn41 = dot([u41;v41],meshcell[j,i].out_norm41)
-  end
-end
-
-@time pp(u,v)
-@time ppp(u,v)
-=#
-# =================================================
+# ====== main loop function contains the whole three stage calculation ========
 function main_loop(t_min::Float64,t_max::Float64,t_step::Float64,t_end::Int64)
 
   # pre define t-derivative slope
+  Nu = zeros(Float64,ny-1,nx-1)
+  Nv = zeros(Float64,ny-1,nx-1)
+  Vu = zeros(Float64,ny-1,nx-1)
+  Vv = zeros(Float64,ny-1,nx-1)
+
   Nu_1 = zeros(Float64,ny-1,nx-1)
   Nv_1 = zeros(Float64,ny-1,nx-1)
   Vu_1 = zeros(Float64,ny-1,nx-1)
   Vv_1 = zeros(Float64,ny-1,nx-1)
 
   for it = 1 : t_end
-    t[it] = t_min+t_step*it
-    print("time = $(t[it])",'\n')
+
+    t[it] = t_min + t_step*it
+    print('\n',"==== time = $(t[it]), calculation start ====",'\n')
 
    # =========== velocity prediction for u*,v* =============================
-    v_prediction(Nu_1,Nv_1,Vu_1,Vv_1)
+    v_prediction(Nu,Nu_1,Nv,Nv_1,Vu,Vu_1,Vv,Vv_1)
     bcs(nx,ny,problem_type)
-    #print(Nu_1[2,2],'\n',Nv_1[2,2],'\n',Vu_1[2,2],'\n',Vv_1[2,2],'\n')
-   # =========== end of calculate the u*,v* value at cellcenter ============
    # =========== Pressure calculation parts ================================
     p_calculation()
+    bcs(nx,ny,problem_type)
    # =========== Pressure Correction =======================================
     p_correction(it)
-    print("timestep finished \n")
+    print("========= timestep finished =================== \n")
     bcs(nx,ny,problem_type)
   end
 end
+
 main_loop(t_min,t_max,t_step,t_end)
 
 
-K = K/(4*pi^2)
 
-
-# plot and figure
-
-#using PyPlot
-#t_max = 0
-x_coord = zeros((ny-1),(nx-1))
-y_coord = zeros((ny-1),(nx-1))
-for j = 1:ny-1
-  for i = 1:nx-1
-  x_coord[j,i] = meshcell[j,i].cellcenter[1]
-  y_coord[j,i] = meshcell[j,i].cellcenter[2]
-  end
-end
-#=
-# 2-d Tyler Green Porblem
-#t_max = 0.0001
-v_tyler = zeros((ny-1),(nx-1))
-u_tyler = zeros((ny-1),(nx-1))
-p_tyler = zeros((ny-1),(nx-1))
-for j = 1:ny-1
-  for i = 1:nx-1
-   u_tyler[j,i] = -cos(x_coord[j,i])*sin(y_coord[j,i])*exp(-2*nu*t_max)
-   v_tyler[j,i] =  sin(x_coord[j,i])*cos(y_coord[j,i])*exp(-2*nu*t_max)
-   p_tyler[j,i] = 1.0 - 1/4*(cos(2*x_coord[j,i])+cos(2*y_coord[j,i]))*exp(-4*nu*t_max)
-  end
-end
-=#
-#=
-K_T = zeros(t_end)
-for i = 1:t_end
- K_T[i] = 1/4*exp(-4*nu*(t_min+i*t_step))
-end
-=#
-
+#  =================== plot and figure =============================
+using DelimitedFiles
 using Plots
 pyplot()
-#
-contour(x_coord,y_coord,u[2:ny,2:nx])
-#contour(x_coord,y_coord,u_tyler)
-contour(x_coord,y_coord,v[2:ny,2:nx])
-#contour(x_coord,y_coord,v_tyler)
-contour(x_coord,y_coord,p[2:ny,2:nx])
-#contour(x_coord,y_coord,p_tyler)
-#
 
+function tylergreen_plot()
+  x_coord = zeros((ny-1),(nx-1))
+  y_coord = zeros((ny-1),(nx-1))
+  for j = 1:ny-1
+  for i = 1:nx-1
+    x_coord[j,i] = meshcell[j,i].cellcenter[1]
+    y_coord[j,i] = meshcell[j,i].cellcenter[2]
+  end
+  end
+  # 2-d Tyler Green Porblem
+  v_tyler = zeros((ny-1),(nx-1))
+  u_tyler = zeros((ny-1),(nx-1))
+  p_tyler = zeros((ny-1),(nx-1))
+   for j = 1:ny-1
+   for i = 1:nx-1
+     u_tyler[j,i] = -cos(x_coord[j,i])*sin(y_coord[j,i])*exp(-2*nu*t_max)
+     v_tyler[j,i] =  sin(x_coord[j,i])*cos(y_coord[j,i])*exp(-2*nu*t_max)
+     p_tyler[j,i] = 1.0 - 1/4*(cos(2*x_coord[j,i])+cos(2*y_coord[j,i]))*exp(-4*nu*t_max)
+   end
+   end
+   K_T = zeros(t_end)
+   for i = 1:t_end
+   K_T[i] = 1/4*exp(-4*nu*(t_min+i*t_step))
+   end
+   plot(t,K,label ="CFD",
+        title = "Re = $Re KE decay",
+        xlabel = "t", ylabel = "KE")
+   plot!(t,K_T,label = "Theoretical")
+   png("Tyler green K comparison")
+
+   contour(x_coord,y_coord,u[2:ny,2:nx],xlabel = "x",ylabel = "y")
+   png(" u contour tyler at Re $Re")
+   contour(x_coord,y_coord,u_tyler,xlabel = "x",ylabel = "y")
+   png(" u contour tylergreen ana at Re $Re")
+   contour(x_coord,y_coord,v[2:ny,2:nx],xlabel = "x",ylabel = "y")
+   png(" v contour tyler at Re $Re")
+   contour(x_coord,y_coord,v_tyler,xlabel = "x",ylabel = "y")
+   png(" v contour tylergreen ana at Re $Re")
+   contour(x_coord,y_coord,p[2:ny,2:nx],xlabel = "x",ylabel = "y")
+   png(" p contour tyler at Re $Re")
+   contour(x_coord,y_coord,p_tyler,xlabel = "x",ylabel = "y")
+   png(" p contour tylergreen ana at Re $Re")
+
+   writedlm("tyler p data of $t_max Re$Re",p)
+   writedlm("tyler u data of $t_max Re$Re",u)
+   writedlm("tyler v data of $t_max Re$Re",v)
+end
+
+tylergreen_plot()
 #=
-plot(t,K,label ="CFD",
-     title = "Re = $Re KE decay",
-     xlabel = "t", ylabel = "KE")
-plot!(t,K_T,label = "Theoretical")
-
-png("re100 tyler")
-=#
-#=
-# Data restart process
-using DelimitedFiles
-writedlm(" p data of $t_max re100",p)
-writedlm("tyler u data of $t_max re100",u)
-writedlm("tyler v data of $t_max re100",v)
+function  Data_extraction()
+  using DelimitedFiles
+  u = readdlm("u data of $t_max re$re")
+  v = readdlm("v data of $t_max re$re")
+  p = readdlm("p data of $t_max re$re")
 
 
-u = readdlm("u data of 10.0 re400")
-v = readdlm("v data of 10.0 re400")
-p = readdlm("p data of 10.0 re400")
+
+end
+writedlm("p data of $t_max re$re",p)
+writedlm("u data of $t_max re$re",u)
+writedlm("v data of $t_max re$re",v)
 =#

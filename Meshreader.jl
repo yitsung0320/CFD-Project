@@ -59,8 +59,8 @@ function cellproperty(coord,ni::Int64,nj::Int64)
  meshcell = Array{cell,2}(undef,nj-1,ni-1)
  w = Array{Float64,1}(undef,3)   # angular vector for judge the mesh roation
 
- for j = 1 : nj-1
   for i = 1: ni-1
+  for j = 1 : nj-1
    meshcell[j,i] = cell(coord[i + ni*(j-1),:],coord[i + 1+ni*(j-1),:],
                         coord[i + ni*j+1,:],coord[i+ni*j,:])
    meshcell[j,i].cellcenter = (coord[i + ni*(j-1),:] + coord[i + 1+ni*(j-1),:]
