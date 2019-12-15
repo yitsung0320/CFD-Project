@@ -514,7 +514,7 @@ function tylergreen_plot(t_max::Float64)
    PyPlot.xlabel("x")
    PyPlot.ylabel("y")
    PyPlot.title("Streamline")
-   PyPlot.streamplot(x_1d,y_1d,u[2:ny,2:nx],v[2:ny,2:nx],density=0.7)
+   PyPlot.streamplot(x_1d,y_1d,u[2:ny,2:nx],v[2:ny,2:nx],density=2.0)
    PyPlot.savefig("tyler green streamplot")
 end
 function tylergreen_result(t_max::Float64)
@@ -625,7 +625,7 @@ function cavity_plot(t_max::Float64)
   PyPlot.xlabel("x")
   PyPlot.ylabel("y")
   PyPlot.title("Streamline")
-  PyPlot.streamplot(x_1d,y_1d,u[2:ny,2:nx],v[2:ny,2:nx],density=0.7)
+  PyPlot.streamplot(x_1d,y_1d,u[2:ny,2:nx],v[2:ny,2:nx],density=2.0)
   PyPlot.savefig("Cavity Streamplot")
 end
 # ====== main loop function contains the whole three stage calculation ========
@@ -680,21 +680,14 @@ function main_loop(t_min::Float64,t_max::Float64,t_step::Float64,t_end::Int64)
 end
 main_loop(t_min,t_max,t_step,t_end)
 
+#  =================== data extraction plot and figure =============================
 
-#  =================== plot and figure =============================
-
-
-#=
 function  Data_extraction()
-  using DelimitedFiles
-  u = readdlm("u data of $t_max re$re")
-  v = readdlm("v data of $t_max re$re")
-  p = readdlm("p data of $t_max re$re")
 
-
+  u = readdlm("cavity u data of $t_max Re$Re")
+  v = readdlm("cavity v data of $t_max Re$Re")
+  p = readdlm("cavity u data of $t_max Re$Re")
 
 end
-writedlm("p data of $t_max re$re",p)
-writedlm("u data of $t_max re$re",u)
-writedlm("v data of $t_max re$re",v)
-=#
+#Data_extraction()
+#cavity_plot(t_max)
